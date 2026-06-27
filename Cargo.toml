@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/ades"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lfern70/eidas-rs"
+authors = ["lfern70 <lfern70@gmail.com>"]
+
+[workspace.dependencies]
+thiserror = "1"
+hex = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
