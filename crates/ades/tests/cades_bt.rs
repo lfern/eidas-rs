@@ -13,9 +13,13 @@ fn cades_bt_roundtrip() {
     assert!(!signed.is_empty());
     assert_eq!(signed[0], 0x30, "must be DER SEQUENCE");
 
-    // Write to disk so dss-client can pick it up
-    std::fs::write("cades_bt_test.p7s", &signed).expect("write failed");
-    std::fs::write("cades_bt_original.txt", data).expect("write failed");
+    let tmp = std::env::temp_dir();
+    std::fs::write(tmp.join("cades_bt_test.p7s"), &signed).expect("write failed");
+    std::fs::write(tmp.join("cades_bt_original.txt"), data).expect("write failed");
 
-    println!("CAdES B-T: {} bytes → cades_bt_test.p7s", signed.len());
+    println!(
+        "CAdES B-T: {} bytes → {}",
+        signed.len(),
+        tmp.join("cades_bt_test.p7s").display()
+    );
 }

@@ -16,6 +16,7 @@ fn pades_bt_roundtrip() {
         "signed PDF must be larger than original"
     );
 
-    std::fs::write("pades_bt_test.pdf", &signed).expect("write failed");
-    println!("PAdES B-T: {} bytes → pades_bt_test.pdf", signed.len());
+    let out = std::env::temp_dir().join("pades_bt_test.pdf");
+    std::fs::write(&out, &signed).expect("write failed");
+    println!("PAdES B-T: {} bytes → {}", signed.len(), out.display());
 }
