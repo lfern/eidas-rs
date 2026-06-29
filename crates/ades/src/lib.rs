@@ -54,6 +54,10 @@ pub mod ocsp;
 /// AdES signature level upgrades (B-T, B-LT, B-LTA).
 pub mod levels;
 
+/// PKCS#11 signing backend (DNIe, smart cards, HSMs).
+#[cfg(feature = "pkcs11")]
+pub mod pkcs11;
+
 pub use certificate::Certificate;
 pub use digest::DigestAlgorithm;
 pub use error::AdesError;

@@ -32,6 +32,10 @@ pub enum AdesError {
     #[error("OCSP error: {0}")]
     Ocsp(String),
 
+    /// PKCS#11 token or library error.
+    #[error("PKCS#11 error: {0}")]
+    Pkcs11(String),
+
     /// Operation not yet implemented.
     #[error("not implemented: {0}")]
     NotImplemented(&'static str),
