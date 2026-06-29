@@ -55,9 +55,46 @@ impl SoftSigner {
     ///
     /// Returns [`AdesError`] if key generation or certificate construction fails.
     pub fn generate(bits: usize) -> Result<Self, AdesError> {
-        // M1: implement self-signed certificate generation with x509-cert builder
-        let _ = bits;
-        Err(AdesError::NotImplemented("SoftSigner::generate (M1)"))
+        use der::{Decode, Encode};
+        use rand_core::OsRng;
+        use rsa::pkcs1v15::SigningKey;
+        use sha2::Sha256;
+        use signature::Keypair;
+        use spki::{EncodePublicKey, SubjectPublicKeyInfoOwned};
+        use x509_cert::{
+            builder::{Builder, CertificateBuilder, Profile},
+            name::RdnSequence,
+            serial_number::SerialNumber,
+            time::Validity,
+        };
+
+        let private_key = rsa::RsaPrivateKey::new(&mut OsRng, bits).map_err(AdesError::Rsa)?;
+        let signing_key = SigningKey::<Sha256>::new(private_key.clone());
+
+        // Extract SPKI from the verifying key
+        let verifying_key = signing_key.verifying_key();
+        let pub_key_doc = verifying_key
+            .to_public_key_der()
+            .map_err(|e| AdesError::Signer(Box::new(e)))?;
+        let spki = SubjectPublicKeyInfoOwned::from_der(pub_key_doc.as_bytes())?;
+
+        // 10-year validity, empty subject (self-signed test cert)
+        let validity = Validity::from_now(std::time::Duration::from_secs(60 * 60 * 24 * 365 * 10))?;
+        let subject = RdnSequence::default();
+        let serial = SerialNumber::from(1u32);
+
+        let builder =
+            CertificateBuilder::new(Profile::Root, serial, validity, subject, spki, &signing_key)?;
+
+        let cert = builder.build::<rsa::pkcs1v15::Signature>()?;
+        let cert_der = cert.to_der()?;
+        let certificate = Certificate::from_der(&cert_der)?;
+
+        Ok(Self {
+            private_key,
+            certificate,
+            digest: DigestAlgorithm::Sha256,
+        })
     }
 
     /// Creates a `SoftSigner` from an existing RSA private key and DER-encoded certificate.

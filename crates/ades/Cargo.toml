@@ -36,6 +36,9 @@ lopdf = "0.32"
 thiserror.workspace = true
 signature = "2"
 
+# RNG para generación de claves
+rand_core = { version = "0.6", features = ["getrandom"] }
+
 # Opcionales
 cryptoki = { version = "0.6", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }

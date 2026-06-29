@@ -16,6 +16,14 @@ pub enum AdesError {
     #[error("DER error: {0}")]
     Der(#[from] der::Error),
 
+    /// Certificate builder error (key mismatch, extension encoding, etc.).
+    #[error("certificate builder error: {0}")]
+    Builder(#[from] x509_cert::builder::Error),
+
+    /// Error returned by a [`crate::signer::Signer`] backend.
+    #[error("signer error: {0}")]
+    Signer(Box<dyn std::error::Error + Send + Sync + 'static>),
+
     /// Operation not yet implemented.
     #[error("not implemented: {0}")]
     NotImplemented(&'static str),

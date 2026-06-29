@@ -1,9 +1,5 @@
 /// CAdES B-B roundtrip integration test.
-///
-/// This test is ignored until M1 is implemented.
-/// Run with: `cargo test -- --ignored`
 #[test]
-#[ignore = "M1: CAdES B-B not yet implemented"]
 fn cades_bb_roundtrip() {
     use ades::{cades, signer::SoftSigner};
 
