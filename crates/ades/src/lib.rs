@@ -45,6 +45,9 @@ pub mod cades;
 #[cfg(feature = "pades")]
 pub mod pades;
 
+/// TSP (Time-Stamp Protocol, RFC 3161) client.
+pub mod tsp;
+
 pub use certificate::Certificate;
 pub use digest::DigestAlgorithm;
 pub use error::AdesError;

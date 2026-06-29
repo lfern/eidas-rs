@@ -14,6 +14,7 @@ default = ["cades", "pades", "soft"]
 cades = []
 pades = ["cades"]
 soft = []
+tsp = ["dep:ureq"]
 pkcs11 = ["dep:cryptoki"]
 wasm = ["dep:wasm-bindgen"]
 
@@ -40,6 +41,7 @@ signature = "2"
 rand_core = { version = "0.6", features = ["getrandom"] }
 
 # Opcionales
+ureq = { version = "2", features = ["json"], optional = true }
 cryptoki = { version = "0.6", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 

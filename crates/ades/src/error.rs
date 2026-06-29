@@ -24,6 +24,14 @@ pub enum AdesError {
     #[error("signer error: {0}")]
     Signer(Box<dyn std::error::Error + Send + Sync + 'static>),
 
+    /// TSP (RFC 3161) request or response error.
+    #[error("TSP error: {0}")]
+    Tsp(String),
+
+    /// OCSP (RFC 6960) request or response error.
+    #[error("OCSP error: {0}")]
+    Ocsp(String),
+
     /// Operation not yet implemented.
     #[error("not implemented: {0}")]
     NotImplemented(&'static str),
