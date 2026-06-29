@@ -6,8 +6,8 @@
 //! # CAdES detached (firma .p7s + documento original)
 //! dss-client cades firma.p7s original.txt
 //!
-//! # CAdES attached (firma .p7s sin documento aparte)
-//! dss-client cades firma.p7s
+//! # Con política que ignora cadena de confianza (para certificados de test)
+//! dss-client --no-trust cades firma.p7s original.txt
 //!
 //! # PAdES (PDF firmado)
 //! dss-client pades documento_firmado.pdf
@@ -21,6 +21,10 @@ use std::{env, fs, path::Path, process};
 
 const DSS_BASE_URL: &str =
     "https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/services/rest";
+
+/// Política DSS con requisitos de cadena de confianza desactivados.
+/// Útil para validar firmas con certificados autofirmados o de test.
+const NO_TRUST_POLICY_XML: &[u8] = include_bytes!("no_trust_policy.xml");
 
 // ---------------------------------------------------------------------------
 // Tipos de resultado
@@ -40,12 +44,25 @@ struct ValidationResult {
 
 struct DssClient {
     base_url: String,
+    no_trust: bool,
 }
 
 impl DssClient {
-    fn new(base_url: &str) -> Self {
+    fn new(base_url: &str, no_trust: bool) -> Self {
         Self {
             base_url: base_url.to_owned(),
+            no_trust,
+        }
+    }
+
+    fn policy_field(&self) -> Value {
+        if self.no_trust {
+            serde_json::json!({
+                "bytes": STANDARD.encode(NO_TRUST_POLICY_XML),
+                "name": "no-trust-policy.xml"
+            })
+        } else {
+            Value::Null
         }
     }
 
@@ -60,7 +77,7 @@ impl DssClient {
     ) -> Result<ValidationResult, String> {
         let mut body = serde_json::json!({
             "signedDocument": remote_document(sig, sig_name),
-            "policy": null,
+            "policy": self.policy_field(),
             "tokenExtractionStrategy": "NONE"
         });
 
@@ -75,7 +92,7 @@ impl DssClient {
     fn validate_pades(&self, sig: &[u8], sig_name: &str) -> Result<ValidationResult, String> {
         let body = serde_json::json!({
             "signedDocument": remote_document(sig, sig_name),
-            "policy": null,
+            "policy": self.policy_field(),
             "tokenExtractionStrategy": "NONE"
         });
 
@@ -110,7 +127,7 @@ fn remote_document(bytes: &[u8], name: &str) -> Value {
 
 fn parse_simple_report(response: &Value) -> Result<ValidationResult, String> {
     // La respuesta del DSS REST usa PascalCase:
-    //   { "SimpleReport": { "signatureOrTimestampOrEvidenceRecord": [ { "Indication": "...", ... } ] } }
+    //   { "SimpleReport": { "signatureOrTimestampOrEvidenceRecord": [ { "Signature": { ... } } ] } }
     let sigs = response
         .pointer("/SimpleReport/signatureOrTimestampOrEvidenceRecord")
         .and_then(|v| v.as_array())
@@ -120,8 +137,6 @@ fn parse_simple_report(response: &Value) -> Result<ValidationResult, String> {
         return Err("DSS no encontró ninguna firma en el documento".to_owned());
     }
 
-    // Each element is { "Signature": { ... } } or { "Timestamp": { ... } }
-    // We look for the first Signature entry.
     let sig = sigs
         .iter()
         .find_map(|e| e.get("Signature"))
@@ -149,7 +164,7 @@ fn str_field<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
-/// Extracts a `[{ "value": "..." }]` array nested under `parent_key -> child_key`.
+/// Extrae un array `[{ "value": "..." }]` anidado bajo `parent_key -> child_key`.
 fn nested_string_array(v: &Value, parent_key: &str, child_key: &str) -> Vec<String> {
     v.get(parent_key)
         .and_then(|p| p.get(child_key))
@@ -188,30 +203,48 @@ fn print_result(result: &ValidationResult) {
 
 fn usage(prog: &str) {
     eprintln!("Uso:");
-    eprintln!("  {prog} cades <firma.p7s> [original.txt]   — CAdES detached o attached");
-    eprintln!("  {prog} pades <documento.pdf>               — PAdES");
+    eprintln!("  {prog} [--no-trust] cades <firma.p7s> [original.txt]");
+    eprintln!("  {prog} [--no-trust] pades <documento.pdf>");
+    eprintln!();
+    eprintln!("  --no-trust  ignora cadena de confianza (para certs de test/autofirmados)");
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     let prog = args[0].as_str();
 
-    if args.len() < 3 {
+    // Parse --no-trust flag (can appear anywhere before the subcommand)
+    let no_trust = args.iter().any(|a| a == "--no-trust");
+    let positional: Vec<&str> = args[1..]
+        .iter()
+        .filter(|a| a.as_str() != "--no-trust")
+        .map(|a| a.as_str())
+        .collect();
+
+    if positional.len() < 2 {
         usage(prog);
         process::exit(1);
     }
 
-    let client = DssClient::new(DSS_BASE_URL);
+    if no_trust {
+        eprintln!("[aviso] usando política sin validación de cadena de confianza");
+    }
 
-    let result = match args[1].as_str() {
+    let client = DssClient::new(DSS_BASE_URL, no_trust);
+
+    let result = match positional[0] {
         "cades" => {
-            let sig = fs::read(&args[2]).unwrap_or_else(|e| {
-                eprintln!("No se puede leer {}: {e}", args[2]);
+            let sig = fs::read(positional[1]).unwrap_or_else(|e| {
+                eprintln!("No se puede leer {}: {e}", positional[1]);
                 process::exit(1);
             });
-            let sig_name = Path::new(&args[2]).file_name().unwrap().to_str().unwrap();
+            let sig_name = Path::new(positional[1])
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap();
 
-            let original = args.get(3).map(|p| {
+            let original = positional.get(2).map(|p| {
                 let bytes = fs::read(p).unwrap_or_else(|e| {
                     eprintln!("No se puede leer {p}: {e}");
                     process::exit(1);
@@ -232,11 +265,15 @@ fn main() {
             )
         }
         "pades" => {
-            let sig = fs::read(&args[2]).unwrap_or_else(|e| {
-                eprintln!("No se puede leer {}: {e}", args[2]);
+            let sig = fs::read(positional[1]).unwrap_or_else(|e| {
+                eprintln!("No se puede leer {}: {e}", positional[1]);
                 process::exit(1);
             });
-            let sig_name = Path::new(&args[2]).file_name().unwrap().to_str().unwrap();
+            let sig_name = Path::new(positional[1])
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap();
             client.validate_pades(&sig, sig_name)
         }
         cmd => {
