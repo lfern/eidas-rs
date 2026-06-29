@@ -69,19 +69,21 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 
 ## Milestone actual
 
-**M1: CAdES B-B roundtrip**
-- `tests/cades_bb.rs` pasa (sin `#[ignore]`)
-- DSS valida la firma generada
+**M2: PAdES B-B ✅**
+- `tests/pades_bb.rs` pasa (sin `#[ignore]`)
+- DSS valida la firma como `PAdES-BES` con `TOTAL_PASSED`
+- `crates/ades/examples/dump_pades_bb.rs` genera el PDF firmado
+- Validar: `cargo run -p dss-client -- --no-trust pades pades_bb_test.pdf`
 
-**Siguiente: M2 — PAdES B-B**
+**Siguiente: M3 — Niveles T, LT, LTA (TSP/OCSP)**
 
 ## Roadmap
 
 | Milestone | Descripción | Estado |
 |-----------|-------------|--------|
 | M0 | Workspace + stubs compilando | ✅ |
-| M1 | CAdES B-B validado por DSS | 🔄 |
-| M2 | PAdES B-B validado por DSS | ⏳ |
+| M1 | CAdES B-B validado por DSS | ✅ |
+| M2 | PAdES B-B validado por DSS | ✅ |
 | M3 | Niveles T, LT, LTA (TSP/OCSP) | ⏳ |
 | M4 | Backend PKCS#11 (DNIe/HSM) | ⏳ |
 | M5 | XAdES | ⏳ |

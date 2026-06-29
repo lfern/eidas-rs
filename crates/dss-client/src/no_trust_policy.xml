@@ -213,6 +213,7 @@
 			<ManifestEntryNameMatch Level="WARN" />
 			<SignatureIntact Level="FAIL" />
 			<SignatureDuplicated Level="FAIL" />
+			<!-- MODIFICADO: permite certs no reconocidos en ninguna fuente de confianza -->
 			<ProspectiveCertificateChain Level="IGNORE" />
 <!-- 			<TrustServiceTypeIdentifier Level="WARN"> -->
 <!-- 				<Id>http://uri.etsi.org/TrstSvc/Svctype/CA/QC</Id> -->

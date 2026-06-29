@@ -1,1 +1,7 @@
 /target
+*.p7s
+/cades_bb_original.txt
+# Generated PDF outputs at workspace root
+/pades_bb_test.pdf
+# Keep test fixtures
+!crates/ades/tests/fixtures/*.pdf
