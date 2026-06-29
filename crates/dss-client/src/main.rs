@@ -12,6 +12,12 @@
 //! # PAdES (PDF firmado)
 //! dss-client pades documento_firmado.pdf
 //!
+//! # Generar CAdES B-B en memoria y validar contra DSS
+//! dss-client --no-trust sign-cades-bb [original.txt]
+//!
+//! # Generar PAdES B-B en memoria y validar contra DSS
+//! dss-client --no-trust sign-pades-bb documento.pdf
+//!
 //! # Generar CAdES B-T en memoria y validar contra DSS
 //! dss-client --no-trust sign-cades-t [original.txt]
 //!
@@ -214,6 +220,8 @@ fn usage(prog: &str) {
     eprintln!("Uso:");
     eprintln!("  {prog} [--no-trust] cades <firma.p7s> [original.txt]");
     eprintln!("  {prog} [--no-trust] pades <documento.pdf>");
+    eprintln!("  {prog} [--no-trust] sign-cades-bb [original.txt]");
+    eprintln!("  {prog} [--no-trust] sign-pades-bb <documento.pdf>");
     eprintln!("  {prog} [--no-trust] sign-cades-t [original.txt]");
     eprintln!("  {prog} [--no-trust] sign-pades-t <documento.pdf>");
     eprintln!();
@@ -289,6 +297,56 @@ fn main() {
                 .to_str()
                 .unwrap();
             client.validate_pades(&sig, sig_name)
+        }
+        "sign-cades-bb" => {
+            let data: Vec<u8> = match positional.get(1) {
+                Some(path) => fs::read(path).unwrap_or_else(|e| {
+                    eprintln!("No se puede leer {path}: {e}");
+                    process::exit(1);
+                }),
+                None => b"hello world cades-bb".to_vec(),
+            };
+
+            eprintln!("[sign-cades-bb] generando clave RSA 2048…");
+            let signer = SoftSigner::generate(2048).unwrap_or_else(|e| {
+                eprintln!("Error generando clave: {e}");
+                process::exit(1);
+            });
+
+            eprintln!("[sign-cades-bb] firmando…");
+            let signed = cades::sign(&data, &signer).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!("[sign-cades-bb] {} bytes — enviando a DSS…", signed.len());
+
+            client.validate_cades(&signed, "signed.p7s", Some((&data, "original.bin")))
+        }
+        "sign-pades-bb" => {
+            if positional.len() < 2 {
+                eprintln!("sign-pades-bb requiere un fichero PDF");
+                usage(prog);
+                process::exit(1);
+            }
+            let pdf = fs::read(positional[1]).unwrap_or_else(|e| {
+                eprintln!("No se puede leer {}: {e}", positional[1]);
+                process::exit(1);
+            });
+
+            eprintln!("[sign-pades-bb] generando clave RSA 2048…");
+            let signer = SoftSigner::generate(2048).unwrap_or_else(|e| {
+                eprintln!("Error generando clave: {e}");
+                process::exit(1);
+            });
+
+            eprintln!("[sign-pades-bb] firmando…");
+            let signed = pades::sign(&pdf, &signer).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!("[sign-pades-bb] {} bytes — enviando a DSS…", signed.len());
+
+            client.validate_pades(&signed, "signed.pdf")
         }
         "sign-cades-t" => {
             let data: Vec<u8> = match positional.get(1) {
