@@ -48,6 +48,9 @@ pub mod pades;
 /// TSP (Time-Stamp Protocol, RFC 3161) client.
 pub mod tsp;
 
+/// OCSP (Online Certificate Status Protocol, RFC 6960) client.
+pub mod ocsp;
+
 pub use certificate::Certificate;
 pub use digest::DigestAlgorithm;
 pub use error::AdesError;
