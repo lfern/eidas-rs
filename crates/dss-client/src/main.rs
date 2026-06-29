@@ -11,13 +11,22 @@
 //!
 //! # PAdES (PDF firmado)
 //! dss-client pades documento_firmado.pdf
+//!
+//! # Generar CAdES B-T en memoria y validar contra DSS
+//! dss-client --no-trust sign-cades-t [original.txt]
+//!
+//! # Generar PAdES B-T en memoria y validar contra DSS
+//! dss-client --no-trust sign-pades-t documento.pdf
 //! ```
 //!
 //! Sale con código 0 si DSS responde TOTAL_PASSED, con código 1 en cualquier otro caso.
 
+use ades::{cades, pades, signer::SoftSigner, tsp::TspClient};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 use std::{env, fs, path::Path, process};
+
+const FREETSA_URL: &str = ades::tsp::client::FREETSA_URL;
 
 const DSS_BASE_URL: &str =
     "https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/services/rest";
@@ -205,8 +214,13 @@ fn usage(prog: &str) {
     eprintln!("Uso:");
     eprintln!("  {prog} [--no-trust] cades <firma.p7s> [original.txt]");
     eprintln!("  {prog} [--no-trust] pades <documento.pdf>");
+    eprintln!("  {prog} [--no-trust] sign-cades-t [original.txt]");
+    eprintln!("  {prog} [--no-trust] sign-pades-t <documento.pdf>");
     eprintln!();
     eprintln!("  --no-trust  ignora cadena de confianza (para certs de test/autofirmados)");
+    eprintln!();
+    eprintln!("Los subcomandos sign-* generan la firma en memoria con SoftSigner + FreeTSA");
+    eprintln!("y la envían directamente a DSS para validación.");
 }
 
 fn main() {
@@ -221,7 +235,7 @@ fn main() {
         .map(|a| a.as_str())
         .collect();
 
-    if positional.len() < 2 {
+    if positional.is_empty() {
         usage(prog);
         process::exit(1);
     }
@@ -275,6 +289,58 @@ fn main() {
                 .to_str()
                 .unwrap();
             client.validate_pades(&sig, sig_name)
+        }
+        "sign-cades-t" => {
+            let data: Vec<u8> = match positional.get(1) {
+                Some(path) => fs::read(path).unwrap_or_else(|e| {
+                    eprintln!("No se puede leer {path}: {e}");
+                    process::exit(1);
+                }),
+                None => b"hello world cades-t".to_vec(),
+            };
+
+            eprintln!("[sign-cades-t] generando clave RSA 2048…");
+            let signer = SoftSigner::generate(2048).unwrap_or_else(|e| {
+                eprintln!("Error generando clave: {e}");
+                process::exit(1);
+            });
+            let tsa = TspClient::new(FREETSA_URL);
+
+            eprintln!("[sign-cades-t] firmando + timestamp FreeTSA…");
+            let signed = cades::sign_t(&data, &signer, &tsa).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!("[sign-cades-t] {} bytes — enviando a DSS…", signed.len());
+
+            client.validate_cades(&signed, "signed.p7s", Some((&data, "original.bin")))
+        }
+        "sign-pades-t" => {
+            if positional.len() < 2 {
+                eprintln!("sign-pades-t requiere un fichero PDF");
+                usage(prog);
+                process::exit(1);
+            }
+            let pdf = fs::read(positional[1]).unwrap_or_else(|e| {
+                eprintln!("No se puede leer {}: {e}", positional[1]);
+                process::exit(1);
+            });
+
+            eprintln!("[sign-pades-t] generando clave RSA 2048…");
+            let signer = SoftSigner::generate(2048).unwrap_or_else(|e| {
+                eprintln!("Error generando clave: {e}");
+                process::exit(1);
+            });
+            let tsa = TspClient::new(FREETSA_URL);
+
+            eprintln!("[sign-pades-t] firmando + timestamp FreeTSA…");
+            let signed = pades::sign_t(&pdf, &signer, &tsa).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!("[sign-pades-t] {} bytes — enviando a DSS…", signed.len());
+
+            client.validate_pades(&signed, "signed.pdf")
         }
         cmd => {
             eprintln!("Comando desconocido: '{cmd}'");

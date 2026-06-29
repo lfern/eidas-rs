@@ -51,6 +51,9 @@ pub mod tsp;
 /// OCSP (Online Certificate Status Protocol, RFC 6960) client.
 pub mod ocsp;
 
+/// AdES signature level upgrades (B-T, B-LT, B-LTA).
+pub mod levels;
+
 pub use certificate::Certificate;
 pub use digest::DigestAlgorithm;
 pub use error::AdesError;

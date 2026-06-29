@@ -334,6 +334,7 @@ dependencies = [
 name = "dss-client"
 version = "0.1.0"
 dependencies = [
+ "ades",
  "base64",
  "serde_json",
  "ureq",

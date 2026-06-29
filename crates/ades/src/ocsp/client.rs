@@ -77,6 +77,26 @@ impl OcspClient {
         parse_ocsp_resp(&resp_der)
     }
 
+    /// Like [`check`](Self::check) but returns the raw `OCSPResponse` DER bytes
+    /// for embedding in a B-LT signature (`id-aa-ets-revocationValues`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdesError`] if the AIA extension is absent or the request fails.
+    pub fn raw_response(
+        &self,
+        cert: &Certificate,
+        issuer: &Certificate,
+    ) -> Result<Vec<u8>, AdesError> {
+        let url = match &self.url_override {
+            Some(u) => u.clone(),
+            None => extract_ocsp_url(cert.inner())
+                .ok_or_else(|| AdesError::Ocsp("no OCSP URL in certificate AIA".to_owned()))?,
+        };
+        let req_der = build_ocsp_req(cert.inner(), issuer.inner())?;
+        self.post(&url, &req_der)
+    }
+
     fn post(&self, url: &str, req_der: &[u8]) -> Result<Vec<u8>, AdesError> {
         let resp = ureq::post(url)
             .set("Content-Type", "application/ocsp-request")

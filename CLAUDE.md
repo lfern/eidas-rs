@@ -69,13 +69,17 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 
 ## Milestone actual
 
-**M2: PAdES B-B ✅**
-- `tests/pades_bb.rs` pasa (sin `#[ignore]`)
-- DSS valida la firma como `PAdES-BES` con `TOTAL_PASSED`
-- `crates/ades/examples/dump_pades_bb.rs` genera el PDF firmado
-- Validar: `cargo run -p dss-client -- --no-trust pades pades_bb_test.pdf`
+**M3: Niveles T, LT (TSP/OCSP) ✅**
+- `src/tsp/client.rs` — RFC 3161 TSP client (FreeTSA); `tests/tsp_client.rs` pasa
+- `src/ocsp/client.rs` — RFC 6960 OCSP client; `tests/ocsp_client.rs` pasa
+- `src/levels.rs` — `add_signature_timestamp` / `add_revocation_values` via decode→modify→encode CMS
+- `src/cades/sign_t.rs` — `sign_t` (B-T), `sign_lt` (B-LT); `tests/cades_bt.rs` pasa
+- `src/pades/sign_t.rs` — `pades::sign_t`, `pades::sign_lt`; `examples/dump_pades_bt.rs`
+- DSS valida CAdES B-T como `CAdES-BASELINE-T / TOTAL_PASSED`
+- Features: `tsp = ["dep:ureq"]`, `ocsp = ["dep:x509-ocsp", "dep:ureq"]`
+- Validar CAdES: `cargo run -p dss-client -- --no-trust cades cades_bt_test.p7s`
 
-**Siguiente: M3 — Niveles T, LT, LTA (TSP/OCSP)**
+**Siguiente: M4 — Backend PKCS#11 (DNIe/HSM)**
 
 ## Roadmap
 
@@ -84,13 +88,12 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 | M0 | Workspace + stubs compilando | ✅ |
 | M1 | CAdES B-B validado por DSS | ✅ |
 | M2 | PAdES B-B validado por DSS | ✅ |
-| M3 | Niveles T, LT, LTA (TSP/OCSP) | ⏳ |
+| M3 | Niveles T, LT (TSP/OCSP) | ✅ |
 | M4 | Backend PKCS#11 (DNIe/HSM) | ⏳ |
 | M5 | XAdES | ⏳ |
 
 ## Lo que NO hacer ahora
 
-- No implementar TSP/OCSP hasta que CAdES B-B pase DSS (M3)
 - No implementar PKCS#11 hasta que soft signer funcione completo (M4)
 - No implementar XAdES (M5)
 - No implementar verificación completa (M3)
