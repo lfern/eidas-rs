@@ -219,3 +219,51 @@ fn build_digest_info(digest: &[u8], algo: DigestAlgorithm) -> Result<Vec<u8>, Ad
     out.extend_from_slice(digest);
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn digest_info_sha256_length() {
+        let hash = [0u8; 32];
+        let di = build_digest_info(&hash, DigestAlgorithm::Sha256).unwrap();
+        // DigestInfo DER: prefix (19 bytes) + 32-byte hash = 51 bytes total
+        assert_eq!(di.len(), 51);
+        assert_eq!(di[0], 0x30); // SEQUENCE tag
+        assert_eq!(di[1], 0x31); // 49 bytes payload
+    }
+
+    #[test]
+    fn digest_info_sha384_length() {
+        let hash = [0u8; 48];
+        let di = build_digest_info(&hash, DigestAlgorithm::Sha384).unwrap();
+        // prefix (19 bytes) + 48-byte hash = 67 bytes
+        assert_eq!(di.len(), 67);
+        assert_eq!(di[0], 0x30);
+        assert_eq!(di[1], 0x41); // 65 bytes payload
+    }
+
+    #[test]
+    fn digest_info_sha512_length() {
+        let hash = [0u8; 64];
+        let di = build_digest_info(&hash, DigestAlgorithm::Sha512).unwrap();
+        // prefix (19 bytes) + 64-byte hash = 83 bytes
+        assert_eq!(di.len(), 83);
+        assert_eq!(di[0], 0x30);
+        assert_eq!(di[1], 0x51); // 81 bytes payload
+    }
+
+    #[test]
+    fn digest_info_sha256_oid_bytes() {
+        let hash = [0xabu8; 32];
+        let di = build_digest_info(&hash, DigestAlgorithm::Sha256).unwrap();
+        // OID id-sha256 tag(0x06) + len(0x09) + 9-byte value at offset 4
+        assert_eq!(
+            &di[4..15],
+            &[0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]
+        );
+        // Hash payload occupies the last 32 bytes
+        assert_eq!(&di[di.len() - 32..], &[0xabu8; 32]);
+    }
+}
