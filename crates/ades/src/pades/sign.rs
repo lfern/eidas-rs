@@ -1,4 +1,6 @@
-use crate::{digest::DigestAlgorithm, error::AdesError, signer::Signer};
+use crate::{
+    cms::signature_algorithm_id, digest::DigestAlgorithm, error::AdesError, signer::Signer,
+};
 
 /// Produces a PAdES B-B signature over a PDF document.
 ///
@@ -258,7 +260,6 @@ where
     const ID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5");
     const ID_AA_SIGNING_CERT_V2: ObjectIdentifier =
         ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.16.2.47");
-    const SHA256_WITH_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
 
     let cert = signer.certificate();
 
@@ -328,11 +329,8 @@ where
         parameters: None,
     };
 
-    let sig_alg_params = Any::from_der(&[0x05u8, 0x00])?;
-    let sig_alg_id = AlgorithmIdentifierOwned {
-        oid: SHA256_WITH_RSA,
-        parameters: Some(sig_alg_params),
-    };
+    let key_alg_oid = x509.tbs_certificate.subject_public_key_info.algorithm.oid;
+    let sig_alg_id = signature_algorithm_id(key_alg_oid, digest_algo)?;
 
     let signer_info = SignerInfo {
         version: CmsVersion::V1,

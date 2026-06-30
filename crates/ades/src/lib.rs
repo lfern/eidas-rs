@@ -30,6 +30,8 @@
 
 /// X.509 certificate wrapper.
 pub mod certificate;
+/// Shared CMS/PKCS#7 utilities (signature algorithm derivation).
+pub(crate) mod cms;
 /// Digest algorithm abstractions.
 pub mod digest;
 /// Error types.

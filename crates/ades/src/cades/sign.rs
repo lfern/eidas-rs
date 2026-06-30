@@ -14,7 +14,7 @@ use der::{
 use spki::AlgorithmIdentifierOwned;
 use x509_cert::attr::Attribute;
 
-use crate::{error::AdesError, signer::Signer};
+use crate::{cms::signature_algorithm_id, error::AdesError, signer::Signer};
 
 const ID_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.1");
 const ID_SIGNED_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.7.2");
@@ -24,8 +24,6 @@ const ID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.
 // id-aa-signingCertificateV2 (RFC 5035 / ESS) — mandatory for CAdES B-B
 const ID_AA_SIGNING_CERTIFICATE_V2: ObjectIdentifier =
     ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.16.2.47");
-// sha256WithRSAEncryption
-const SHA256_WITH_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.11");
 
 /// Produces a CAdES B-B signature over `data`.
 ///
@@ -139,12 +137,13 @@ where
         parameters: None,
     };
 
-    // RSA signature algorithm requires explicit NULL parameters per RFC 3279
-    let sig_alg_params = Any::from_der(&[0x05u8, 0x00])?; // DER-encoded NULL
-    let sig_alg_id = AlgorithmIdentifierOwned {
-        oid: SHA256_WITH_RSA,
-        parameters: Some(sig_alg_params),
-    };
+    let key_alg_oid = cert
+        .inner()
+        .tbs_certificate
+        .subject_public_key_info
+        .algorithm
+        .oid;
+    let sig_alg_id = signature_algorithm_id(key_alg_oid, digest_algo)?;
 
     let signer_info = SignerInfo {
         version: CmsVersion::V1,

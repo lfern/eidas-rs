@@ -3,14 +3,25 @@ use std::sync::Mutex;
 use cryptoki::{
     context::{CInitializeArgs, Pkcs11},
     mechanism::Mechanism,
-    object::{Attribute, AttributeType, ObjectClass, ObjectHandle},
+    object::{Attribute, AttributeType, KeyType, ObjectClass, ObjectHandle},
     session::{Session, UserType},
     types::AuthPin,
 };
 
 use crate::{certificate::Certificate, digest::DigestAlgorithm, error::AdesError};
 
+/// Algorithm family of the private key on the token.
+#[cfg(feature = "pkcs11")]
+enum Pkcs11KeyType {
+    Rsa,
+    Ec,
+}
+
 /// PKCS#11 signing backend — delegates signing to a hardware token or HSM.
+///
+/// Supports RSA (PKCS#1 v1.5 via `CKM_RSA_PKCS`) and EC (ECDSA via
+/// `CKM_ECDSA`). The key type is detected automatically at connection time
+/// by reading the `CKA_KEY_TYPE` attribute of the private key object.
 ///
 /// The private key never leaves the device: `sign_digest` sends only the
 /// pre-computed hash, and the token returns the raw signature bytes.
@@ -29,10 +40,15 @@ use crate::{certificate::Certificate, digest::DigestAlgorithm, error::AdesError}
 /// ```
 #[cfg(feature = "pkcs11")]
 pub struct Pkcs11Signer {
+    // Kept alive so C_Finalize is called AFTER C_CloseSession (Rust drops fields top-to-bottom).
+    // Without this, C_Finalize would fire at the end of `new()` while the session is still open,
+    // violating the PKCS#11 spec.
+    _pkcs11: Pkcs11,
     session: Mutex<Session>,
     key_handle: ObjectHandle,
     certificate: Certificate,
     digest: DigestAlgorithm,
+    key_type: Pkcs11KeyType,
 }
 
 #[cfg(feature = "pkcs11")]
@@ -47,7 +63,8 @@ impl Pkcs11Signer {
     /// # Errors
     ///
     /// Returns [`AdesError::Pkcs11`] if the library cannot be loaded, the slot
-    /// does not exist, the PIN is wrong, or no key/certificate is found.
+    /// does not exist, the PIN is wrong, no key/certificate is found, or the
+    /// key type is not RSA or EC.
     pub fn new(
         lib_path: impl AsRef<std::path::Path>,
         slot: u64,
@@ -76,8 +93,9 @@ impl Pkcs11Signer {
             .login(UserType::User, Some(&auth_pin))
             .map_err(pkcs11_err)?;
 
-        // 5. Find private key handle
+        // 5. Find private key handle and detect its type
         let key_handle = find_object(&session, ObjectClass::PRIVATE_KEY, label)?;
+        let key_type = detect_key_type(&session, key_handle)?;
 
         // 6. Find matching certificate and read its DER value
         let cert_handle = find_object(&session, ObjectClass::CERTIFICATE, label)?;
@@ -98,10 +116,12 @@ impl Pkcs11Signer {
         let certificate = Certificate::from_der(&cert_der)?;
 
         Ok(Self {
+            _pkcs11: pkcs11,
             session: Mutex::new(session),
             key_handle,
             certificate,
             digest: DigestAlgorithm::Sha256,
+            key_type,
         })
     }
 
@@ -131,15 +151,27 @@ impl crate::signer::Signer for Pkcs11Signer {
     type Error = AdesError;
 
     fn sign_digest(&self, digest: &[u8]) -> Result<Vec<u8>, Self::Error> {
-        // CKM_RSA_PKCS expects a DigestInfo-wrapped hash (PKCS#1 v1.5 padding)
-        let digest_info = build_digest_info(digest, self.digest)?;
         let session = self
             .session
             .lock()
             .map_err(|_| AdesError::Pkcs11("session mutex poisoned".to_owned()))?;
-        session
-            .sign(&Mechanism::RsaPkcs, self.key_handle, &digest_info)
-            .map_err(pkcs11_err)
+        match self.key_type {
+            // RSA PKCS#1 v1.5: C_Sign expects a DigestInfo-wrapped hash
+            Pkcs11KeyType::Rsa => {
+                let digest_info = build_digest_info(digest, self.digest)?;
+                session
+                    .sign(&Mechanism::RsaPkcs, self.key_handle, &digest_info)
+                    .map_err(pkcs11_err)
+            }
+            // ECDSA: C_Sign expects the raw hash, returns raw r||s (fixed-size per curve).
+            // CMS requires DER SEQUENCE { INTEGER r, INTEGER s } (X9.62 / RFC 3279).
+            Pkcs11KeyType::Ec => {
+                let raw = session
+                    .sign(&Mechanism::Ecdsa, self.key_handle, digest)
+                    .map_err(pkcs11_err)?;
+                ec_raw_sig_to_der(&raw)
+            }
+        }
     }
 
     fn certificate(&self) -> &Certificate {
@@ -181,6 +213,95 @@ fn find_object(
                     .unwrap_or_default()
             ))
         })
+}
+
+fn detect_key_type(
+    session: &Session,
+    key_handle: ObjectHandle,
+) -> Result<Pkcs11KeyType, AdesError> {
+    let attrs = session
+        .get_attributes(key_handle, &[AttributeType::KeyType])
+        .map_err(pkcs11_err)?;
+    let kt = attrs
+        .into_iter()
+        .find_map(|a| {
+            if let Attribute::KeyType(kt) = a {
+                Some(kt)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| AdesError::Pkcs11("could not read CKA_KEY_TYPE attribute".to_owned()))?;
+
+    if kt == KeyType::RSA {
+        Ok(Pkcs11KeyType::Rsa)
+    } else if kt == KeyType::EC {
+        Ok(Pkcs11KeyType::Ec)
+    } else {
+        Err(AdesError::Pkcs11(format!(
+            "unsupported key type {kt:?} — only RSA and EC are supported"
+        )))
+    }
+}
+
+/// Converts a raw PKCS#11 ECDSA signature (`r || s`) to DER format.
+///
+/// `CKM_ECDSA` returns `r` and `s` as fixed-size unsigned big-endian integers
+/// concatenated without any framing. CMS (RFC 3279 §2.2.3) requires:
+/// ```text
+/// ECDSA-Sig-Value ::= SEQUENCE { r INTEGER, s INTEGER }
+/// ```
+fn ec_raw_sig_to_der(raw: &[u8]) -> Result<Vec<u8>, AdesError> {
+    if !raw.len().is_multiple_of(2) {
+        return Err(AdesError::Pkcs11(format!(
+            "ECDSA raw signature length {} is not even",
+            raw.len()
+        )));
+    }
+    let coord = raw.len() / 2;
+    Ok(der_sequence(&[
+        &der_integer(&raw[..coord]),
+        &der_integer(&raw[coord..]),
+    ]))
+}
+
+/// Encodes a DER INTEGER from a big-endian unsigned byte slice.
+/// Strips leading zeros and prepends 0x00 if the high bit is set.
+fn der_integer(bytes: &[u8]) -> Vec<u8> {
+    let trimmed: &[u8] = match bytes.iter().position(|&b| b != 0) {
+        Some(i) => &bytes[i..],
+        None => &[0],
+    };
+    let mut value = if trimmed[0] & 0x80 != 0 {
+        let mut v = vec![0x00];
+        v.extend_from_slice(trimmed);
+        v
+    } else {
+        trimmed.to_vec()
+    };
+    let mut out = vec![0x02]; // INTEGER tag
+    der_push_length(&mut out, value.len());
+    out.append(&mut value);
+    out
+}
+
+/// Encodes a DER SEQUENCE wrapping the concatenation of `items`.
+fn der_sequence(items: &[&[u8]]) -> Vec<u8> {
+    let payload: Vec<u8> = items.iter().flat_map(|s| s.iter().copied()).collect();
+    let mut out = vec![0x30]; // SEQUENCE tag
+    der_push_length(&mut out, payload.len());
+    out.extend_from_slice(&payload);
+    out
+}
+
+fn der_push_length(out: &mut Vec<u8>, len: usize) {
+    if len < 128 {
+        out.push(len as u8);
+    } else if len < 256 {
+        out.extend_from_slice(&[0x81, len as u8]);
+    } else {
+        out.extend_from_slice(&[0x82, (len >> 8) as u8, len as u8]);
+    }
 }
 
 /// Wraps a pre-computed hash in a PKCS#1 DigestInfo structure.

@@ -27,6 +27,7 @@
 //! # Firmar con token PKCS#11 (DNIe, HSM, SoftHSM2) y validar contra DSS
 //! dss-client --no-trust sign-pkcs11-cades-bb <lib.so> <slot> <pin> <label> [original.txt]
 //! dss-client --no-trust sign-pkcs11-pades-bb <lib.so> <slot> <pin> <label> <documento.pdf>
+//! dss-client --no-trust sign-pkcs11-cades-t  <lib.so> <slot> <pin> <label> [original.txt]
 //! ```
 //!
 //! Sale con código 0 si DSS responde TOTAL_PASSED, con código 1 en cualquier otro caso.
@@ -233,6 +234,9 @@ fn usage(prog: &str) {
     );
     eprintln!(
         "  {prog} [--no-trust] sign-pkcs11-pades-bb <lib.so> <slot> <pin> <label> <documento.pdf>"
+    );
+    eprintln!(
+        "  {prog} [--no-trust] sign-pkcs11-cades-t  <lib.so> <slot> <pin> <label> [original.txt]"
     );
     eprintln!();
     eprintln!("  --no-trust  ignora cadena de confianza (para certs de test/autofirmados)");
@@ -490,6 +494,49 @@ fn main() {
             );
 
             client.validate_pades(&signed, "signed.pdf")
+        }
+        "sign-pkcs11-cades-t" => {
+            if positional.len() < 5 {
+                eprintln!(
+                    "sign-pkcs11-cades-t requiere: <lib.so> <slot> <pin> <label> [original.txt]"
+                );
+                usage(prog);
+                process::exit(1);
+            }
+            let lib_path = positional[1];
+            let slot: u64 = positional[2].parse().unwrap_or_else(|_| {
+                eprintln!("slot debe ser un número entero");
+                process::exit(1);
+            });
+            let pin = positional[3];
+            let label = positional[4];
+
+            let data: Vec<u8> = match positional.get(5) {
+                Some(path) => fs::read(path).unwrap_or_else(|e| {
+                    eprintln!("No se puede leer {path}: {e}");
+                    process::exit(1);
+                }),
+                None => b"hello world pkcs11-cades-t".to_vec(),
+            };
+
+            eprintln!("[sign-pkcs11-cades-t] conectando a token PKCS#11…");
+            let signer = Pkcs11Signer::new(lib_path, slot, pin, Some(label)).unwrap_or_else(|e| {
+                eprintln!("Error abriendo token PKCS#11: {e}");
+                process::exit(1);
+            });
+            let tsa = TspClient::new(FREETSA_URL);
+
+            eprintln!("[sign-pkcs11-cades-t] firmando + timestamp FreeTSA…");
+            let signed = cades::sign_t(&data, &signer, &tsa).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!(
+                "[sign-pkcs11-cades-t] {} bytes — enviando a DSS…",
+                signed.len()
+            );
+
+            client.validate_cades(&signed, "signed.p7s", Some((&data, "original.bin")))
         }
         cmd => {
             eprintln!("Comando desconocido: '{cmd}'");
