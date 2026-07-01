@@ -69,6 +69,20 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 
 ## Milestone actual
 
+**M5: XAdES B-B ✅ (en progreso)**
+- `src/xades/mod.rs`, `src/xades/sign.rs` — XAdES B-B enveloping, exc-C14N
+- Feature: `xades = ["dep:base64ct"]`
+- DSS valida como `XAdES-BASELINE-B / TOTAL_PASSED`
+- Validar: `cargo run -p dss-client -- --no-trust sign-xades-bb`
+- Tests: `cargo test --features "cades,pades,soft,tsp,ocsp,xades" --test xades_bb`
+
+**M4: Backend PKCS#11 (DNIe/HSM) ✅**
+- `src/pkcs11/signer.rs` — RSA + ECDSA, `CKA_KEY_TYPE` detection, lifetime correcto
+- `src/cms.rs` — `signature_algorithm_id()` derivando OID del certificado
+- `tests/pkcs11_signer.rs` — tests con SoftHSM2 (RSA B-B, ECDSA B-B, RSA B-T)
+- Features: `pkcs11 = ["dep:cryptoki"]`
+- Ejecutar: `cargo test --features "pkcs11,tsp" --test pkcs11_signer -- --ignored`
+
 **M3: Niveles T, LT (TSP/OCSP) ✅**
 - `src/tsp/client.rs` — RFC 3161 TSP client (FreeTSA); `tests/tsp_client.rs` pasa
 - `src/ocsp/client.rs` — RFC 6960 OCSP client; `tests/ocsp_client.rs` pasa
@@ -79,7 +93,7 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 - Features: `tsp = ["dep:ureq"]`, `ocsp = ["dep:x509-ocsp", "dep:ureq"]`
 - Validar CAdES: `cargo run -p dss-client -- --no-trust cades cades_bt_test.p7s`
 
-**Siguiente: M4 — Backend PKCS#11 (DNIe/HSM)**
+**Siguiente: M5b — XAdES B-T, XAdES-LT**
 
 ## Roadmap
 
@@ -89,13 +103,12 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 | M1 | CAdES B-B validado por DSS | ✅ |
 | M2 | PAdES B-B validado por DSS | ✅ |
 | M3 | Niveles T, LT (TSP/OCSP) | ✅ |
-| M4 | Backend PKCS#11 (DNIe/HSM) | ⏳ |
-| M5 | XAdES | ⏳ |
+| M4 | Backend PKCS#11 (DNIe/HSM) | ✅ |
+| M5 | XAdES | 🔄 (B-B ✅) |
 
 ## Lo que NO hacer ahora
 
-- No implementar PKCS#11 hasta que soft signer funcione completo (M4)
-- No implementar XAdES (M5)
+- No implementar verificación completa
 - No implementar verificación completa (M3)
 - No publicar en crates.io hasta que DSS valide las firmas (después de M2)
 - No usar nightly features

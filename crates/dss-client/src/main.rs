@@ -32,7 +32,7 @@
 //!
 //! Sale con código 0 si DSS responde TOTAL_PASSED, con código 1 en cualquier otro caso.
 
-use ades::{cades, pades, pkcs11::Pkcs11Signer, signer::SoftSigner, tsp::TspClient};
+use ades::{cades, pades, pkcs11::Pkcs11Signer, signer::SoftSigner, tsp::TspClient, xades};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::Value;
 use std::{env, fs, path::Path, process};
@@ -110,6 +110,17 @@ impl DssClient {
 
     /// Valida una firma PAdES (PDF con firma embebida).
     fn validate_pades(&self, sig: &[u8], sig_name: &str) -> Result<ValidationResult, String> {
+        let body = serde_json::json!({
+            "signedDocument": remote_document(sig, sig_name),
+            "policy": self.policy_field(),
+            "tokenExtractionStrategy": "NONE"
+        });
+
+        self.post_validate(body)
+    }
+
+    /// Valida una firma XAdES (XML con firma embebida).
+    fn validate_xades(&self, sig: &[u8], sig_name: &str) -> Result<ValidationResult, String> {
         let body = serde_json::json!({
             "signedDocument": remote_document(sig, sig_name),
             "policy": self.policy_field(),
@@ -238,6 +249,7 @@ fn usage(prog: &str) {
     eprintln!(
         "  {prog} [--no-trust] sign-pkcs11-cades-t  <lib.so> <slot> <pin> <label> [original.txt]"
     );
+    eprintln!("  {prog} [--no-trust] sign-xades-bb [original.txt]");
     eprintln!();
     eprintln!("  --no-trust  ignora cadena de confianza (para certs de test/autofirmados)");
     eprintln!();
@@ -537,6 +549,30 @@ fn main() {
             );
 
             client.validate_cades(&signed, "signed.p7s", Some((&data, "original.bin")))
+        }
+        "sign-xades-bb" => {
+            let data: Vec<u8> = match positional.get(1) {
+                Some(path) => fs::read(path).unwrap_or_else(|e| {
+                    eprintln!("No se puede leer {path}: {e}");
+                    process::exit(1);
+                }),
+                None => b"hello world xades-bb".to_vec(),
+            };
+
+            eprintln!("[sign-xades-bb] generando clave RSA 2048…");
+            let signer = SoftSigner::generate(2048).unwrap_or_else(|e| {
+                eprintln!("Error generando clave: {e}");
+                process::exit(1);
+            });
+
+            eprintln!("[sign-xades-bb] firmando…");
+            let signed = xades::sign(&data, &signer).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!("[sign-xades-bb] {} bytes — enviando a DSS…", signed.len());
+
+            client.validate_xades(&signed, "signed.xml")
         }
         cmd => {
             eprintln!("Comando desconocido: '{cmd}'");

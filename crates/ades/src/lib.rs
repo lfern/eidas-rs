@@ -60,6 +60,10 @@ pub mod levels;
 #[cfg(feature = "pkcs11")]
 pub mod pkcs11;
 
+/// XAdES (XML Advanced Electronic Signatures).
+#[cfg(feature = "xades")]
+pub mod xades;
+
 pub use certificate::Certificate;
 pub use digest::DigestAlgorithm;
 pub use error::AdesError;
