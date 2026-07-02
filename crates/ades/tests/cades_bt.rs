@@ -1,5 +1,5 @@
 /// CAdES B-T integration test — signs, timestamps via FreeTSA, validates with DSS.
-#[cfg(all(feature = "tsp"))]
+#[cfg(feature = "tsp")]
 #[test]
 fn cades_bt_roundtrip() {
     use ades::{cades, signer::SoftSigner, tsp::TspClient};

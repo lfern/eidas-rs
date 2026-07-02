@@ -250,6 +250,8 @@ fn usage(prog: &str) {
         "  {prog} [--no-trust] sign-pkcs11-cades-t  <lib.so> <slot> <pin> <label> [original.txt]"
     );
     eprintln!("  {prog} [--no-trust] sign-xades-bb [original.txt]");
+    eprintln!("  {prog} [--no-trust] sign-xades-t [original.txt]");
+    eprintln!("  {prog} [--no-trust] sign-xades-lt [original.txt]");
     eprintln!();
     eprintln!("  --no-trust  ignora cadena de confianza (para certs de test/autofirmados)");
     eprintln!();
@@ -571,6 +573,57 @@ fn main() {
                 process::exit(1);
             });
             eprintln!("[sign-xades-bb] {} bytes — enviando a DSS…", signed.len());
+
+            client.validate_xades(&signed, "signed.xml")
+        }
+        "sign-xades-t" => {
+            let data: Vec<u8> = match positional.get(1) {
+                Some(path) => fs::read(path).unwrap_or_else(|e| {
+                    eprintln!("No se puede leer {path}: {e}");
+                    process::exit(1);
+                }),
+                None => b"hello world xades-t".to_vec(),
+            };
+
+            eprintln!("[sign-xades-t] generando clave RSA 2048…");
+            let signer = SoftSigner::generate(2048).unwrap_or_else(|e| {
+                eprintln!("Error generando clave: {e}");
+                process::exit(1);
+            });
+            let tsa = TspClient::new(FREETSA_URL);
+
+            eprintln!("[sign-xades-t] firmando + timestamp FreeTSA…");
+            let signed = xades::sign_t(&data, &signer, &tsa).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!("[sign-xades-t] {} bytes — enviando a DSS…", signed.len());
+
+            client.validate_xades(&signed, "signed.xml")
+        }
+        "sign-xades-lt" => {
+            let data: Vec<u8> = match positional.get(1) {
+                Some(path) => fs::read(path).unwrap_or_else(|e| {
+                    eprintln!("No se puede leer {path}: {e}");
+                    process::exit(1);
+                }),
+                None => b"hello world xades-lt".to_vec(),
+            };
+
+            eprintln!("[sign-xades-lt] generando clave RSA 2048…");
+            let signer = SoftSigner::generate(2048).unwrap_or_else(|e| {
+                eprintln!("Error generando clave: {e}");
+                process::exit(1);
+            });
+            let tsa = TspClient::new(FREETSA_URL);
+            let ocsp = ades::ocsp::OcspClient::new();
+
+            eprintln!("[sign-xades-lt] firmando + timestamp + OCSP…");
+            let signed = xades::sign_lt(&data, &signer, &tsa, &ocsp).unwrap_or_else(|e| {
+                eprintln!("Error firmando: {e}");
+                process::exit(1);
+            });
+            eprintln!("[sign-xades-lt] {} bytes — enviando a DSS…", signed.len());
 
             client.validate_xades(&signed, "signed.xml")
         }

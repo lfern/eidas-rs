@@ -69,12 +69,16 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 
 ## Milestone actual
 
-**M5: XAdES B-B ✅ (en progreso)**
-- `src/xades/mod.rs`, `src/xades/sign.rs` — XAdES B-B enveloping, exc-C14N
+**M5: XAdES ✅ (B-B ✅, B-T ✅)**
+- `src/xades/sign.rs` — XAdES B-B enveloping, exc-C14N
+- `src/xades/sign_t.rs` — `sign_t` (B-T), `sign_lt` (B-LT)
 - Feature: `xades = ["dep:base64ct"]`
-- DSS valida como `XAdES-BASELINE-B / TOTAL_PASSED`
-- Validar: `cargo run -p dss-client -- --no-trust sign-xades-bb`
+- DSS valida XAdES B-B como `XAdES-BASELINE-B / TOTAL_PASSED`
+- DSS valida XAdES B-T como `XAdES-BASELINE-T / TOTAL_PASSED`
+- Validar B-B: `cargo run -p dss-client -- --no-trust sign-xades-bb`
+- Validar B-T: `cargo run -p dss-client -- --no-trust sign-xades-t`
 - Tests: `cargo test --features "cades,pades,soft,tsp,ocsp,xades" --test xades_bb`
+- Tests (ignored): `cargo test --features "cades,pades,soft,tsp,ocsp,xades" --test xades_bt -- --ignored`
 
 **M4: Backend PKCS#11 (DNIe/HSM) ✅**
 - `src/pkcs11/signer.rs` — RSA + ECDSA, `CKA_KEY_TYPE` detection, lifetime correcto
@@ -93,7 +97,7 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 - Features: `tsp = ["dep:ureq"]`, `ocsp = ["dep:x509-ocsp", "dep:ureq"]`
 - Validar CAdES: `cargo run -p dss-client -- --no-trust cades cades_bt_test.p7s`
 
-**Siguiente: M5b — XAdES B-T, XAdES-LT**
+**Siguiente: M5c — XAdES B-LT (revocación OCSP)**
 
 ## Roadmap
 
@@ -104,7 +108,7 @@ Si DSS lo acepta → correcto. Si no → no importa lo que diga nuestro propio v
 | M2 | PAdES B-B validado por DSS | ✅ |
 | M3 | Niveles T, LT (TSP/OCSP) | ✅ |
 | M4 | Backend PKCS#11 (DNIe/HSM) | ✅ |
-| M5 | XAdES | 🔄 (B-B ✅) |
+| M5 | XAdES | 🔄 (B-B ✅, B-T ✅) |
 
 ## Lo que NO hacer ahora
 
